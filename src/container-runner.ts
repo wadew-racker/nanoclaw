@@ -235,11 +235,19 @@ function buildContainerArgs(
       'ANTHROPIC_MODEL',
     ]);
     args.push('-e', 'CLAUDE_CODE_USE_BEDROCK=1');
-    if (awsSecrets.AWS_ACCESS_KEY_ID) args.push('-e', `AWS_ACCESS_KEY_ID=${awsSecrets.AWS_ACCESS_KEY_ID}`);
-    if (awsSecrets.AWS_SECRET_ACCESS_KEY) args.push('-e', `AWS_SECRET_ACCESS_KEY=${awsSecrets.AWS_SECRET_ACCESS_KEY}`);
-    if (awsSecrets.AWS_REGION) args.push('-e', `AWS_REGION=${awsSecrets.AWS_REGION}`);
-    if (awsSecrets.AWS_SESSION_TOKEN) args.push('-e', `AWS_SESSION_TOKEN=${awsSecrets.AWS_SESSION_TOKEN}`);
-    if (awsSecrets.ANTHROPIC_MODEL) args.push('-e', `ANTHROPIC_MODEL=${awsSecrets.ANTHROPIC_MODEL}`);
+    if (awsSecrets.AWS_ACCESS_KEY_ID)
+      args.push('-e', `AWS_ACCESS_KEY_ID=${awsSecrets.AWS_ACCESS_KEY_ID}`);
+    if (awsSecrets.AWS_SECRET_ACCESS_KEY)
+      args.push(
+        '-e',
+        `AWS_SECRET_ACCESS_KEY=${awsSecrets.AWS_SECRET_ACCESS_KEY}`,
+      );
+    if (awsSecrets.AWS_REGION)
+      args.push('-e', `AWS_REGION=${awsSecrets.AWS_REGION}`);
+    if (awsSecrets.AWS_SESSION_TOKEN)
+      args.push('-e', `AWS_SESSION_TOKEN=${awsSecrets.AWS_SESSION_TOKEN}`);
+    if (awsSecrets.ANTHROPIC_MODEL)
+      args.push('-e', `ANTHROPIC_MODEL=${awsSecrets.ANTHROPIC_MODEL}`);
   } else {
     // Route API traffic through the credential proxy (containers never see real secrets)
     args.push(
@@ -526,11 +534,7 @@ export async function runContainerAgent(
         // Full input is only included at verbose level to avoid
         // persisting user conversation content on every non-zero exit.
         if (isVerbose) {
-          logLines.push(
-            `=== Input ===`,
-            JSON.stringify(input, null, 2),
-            ``,
-          );
+          logLines.push(`=== Input ===`, JSON.stringify(input, null, 2), ``);
         } else {
           logLines.push(
             `=== Input Summary ===`,

@@ -120,10 +120,11 @@ export function startCredentialProxy(
 
 /** Detect which auth mode the host is configured for. */
 export function detectAuthMode(): AuthMode {
-  const secrets = readEnvFile([
-    'ANTHROPIC_API_KEY',
-    'CLAUDE_CODE_USE_BEDROCK',
-  ]);
-  if (secrets.CLAUDE_CODE_USE_BEDROCK === '1' || secrets.CLAUDE_CODE_USE_BEDROCK === 'true') return 'bedrock';
+  const secrets = readEnvFile(['ANTHROPIC_API_KEY', 'CLAUDE_CODE_USE_BEDROCK']);
+  if (
+    secrets.CLAUDE_CODE_USE_BEDROCK === '1' ||
+    secrets.CLAUDE_CODE_USE_BEDROCK === 'true'
+  )
+    return 'bedrock';
   return secrets.ANTHROPIC_API_KEY ? 'api-key' : 'oauth';
 }

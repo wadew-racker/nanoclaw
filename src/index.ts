@@ -478,9 +478,10 @@ async function main(): Promise<void> {
   restoreRemoteControl();
 
   // Start credential proxy (not needed in Bedrock mode — containers sign requests directly)
-  const proxyServer = detectAuthMode() !== 'bedrock'
-    ? await startCredentialProxy(CREDENTIAL_PROXY_PORT, PROXY_BIND_HOST)
-    : null;
+  const proxyServer =
+    detectAuthMode() !== 'bedrock'
+      ? await startCredentialProxy(CREDENTIAL_PROXY_PORT, PROXY_BIND_HOST)
+      : null;
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {

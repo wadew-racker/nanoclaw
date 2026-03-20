@@ -26,6 +26,7 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { detectAuthMode } from './credential-proxy.js';
+import { readEnvFile } from './env.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
@@ -221,21 +222,39 @@ function buildContainerArgs(
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
 
-  // Route API traffic through the credential proxy (containers never see real secrets)
-  args.push(
-    '-e',
-    `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
-  );
-
-  // Mirror the host's auth method with a placeholder value.
-  // API key mode: SDK sends x-api-key, proxy replaces with real key.
-  // OAuth mode:   SDK exchanges placeholder token for temp API key,
-  //               proxy injects real OAuth token on that exchange request.
   const authMode = detectAuthMode();
-  if (authMode === 'api-key') {
-    args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+
+  if (authMode === 'bedrock') {
+    // Bedrock uses AWS SigV4 signing — bypass the credential proxy and
+    // pass AWS credentials directly to the container.
+    const awsSecrets = readEnvFile([
+      'AWS_ACCESS_KEY_ID',
+      'AWS_SECRET_ACCESS_KEY',
+      'AWS_REGION',
+      'AWS_SESSION_TOKEN',
+      'ANTHROPIC_MODEL',
+    ]);
+    args.push('-e', 'CLAUDE_CODE_USE_BEDROCK=1');
+    if (awsSecrets.AWS_ACCESS_KEY_ID) args.push('-e', `AWS_ACCESS_KEY_ID=${awsSecrets.AWS_ACCESS_KEY_ID}`);
+    if (awsSecrets.AWS_SECRET_ACCESS_KEY) args.push('-e', `AWS_SECRET_ACCESS_KEY=${awsSecrets.AWS_SECRET_ACCESS_KEY}`);
+    if (awsSecrets.AWS_REGION) args.push('-e', `AWS_REGION=${awsSecrets.AWS_REGION}`);
+    if (awsSecrets.AWS_SESSION_TOKEN) args.push('-e', `AWS_SESSION_TOKEN=${awsSecrets.AWS_SESSION_TOKEN}`);
+    if (awsSecrets.ANTHROPIC_MODEL) args.push('-e', `ANTHROPIC_MODEL=${awsSecrets.ANTHROPIC_MODEL}`);
   } else {
-    args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+    // Route API traffic through the credential proxy (containers never see real secrets)
+    args.push(
+      '-e',
+      `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
+    );
+    // Mirror the host's auth method with a placeholder value.
+    // API key mode: SDK sends x-api-key, proxy replaces with real key.
+    // OAuth mode:   SDK exchanges placeholder token for temp API key,
+    //               proxy injects real OAuth token on that exchange request.
+    if (authMode === 'api-key') {
+      args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+    } else {
+      args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+    }
   }
 
   // Runtime-specific args for host gateway resolution

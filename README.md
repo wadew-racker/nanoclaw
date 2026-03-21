@@ -169,6 +169,62 @@ Key files:
 - `src/db.ts` - SQLite operations (messages, groups, sessions, state)
 - `groups/*/CLAUDE.md` - Per-group memory
 
+## Deploying to AWS
+
+NanoClaw runs well on a single EC2 instance. The `infra/` directory contains an AWS CDK stack that provisions everything needed: VPC, public subnet, security group, NACL, IAM role, and a `t4g.small` instance (ARM/Graviton, ~$15/month).
+
+Access is via [SSM Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html) — no SSH port, no key pair, no bastion host.
+
+### Prerequisites
+
+- [AWS CLI](https://aws.amazon.com/cli/) configured with credentials for your target account
+- [Node.js](https://nodejs.org) 18+
+
+### Deploy
+
+```bash
+cd infra
+npm install
+npx cdk bootstrap   # first time only — sets up CDK in your AWS account
+npm run deploy
+```
+
+CDK will print the instance ID and a ready-to-use SSM connect command when the deploy completes.
+
+### Connect and set up
+
+```bash
+# Connect (printed by cdk deploy, or look it up in the AWS console)
+aws ssm start-session --target i-xxxxxxxxxxxxxxxxx
+
+# On the instance — switch to ec2-user, then clone and set up NanoClaw
+sudo su - ec2-user
+gh repo clone <your-fork>/nanoclaw
+cd nanoclaw
+claude   # then run /setup
+```
+
+The user data script installs Docker, Node.js 24, and Git automatically on first boot (takes ~2 minutes). Everything else is handled by `/setup`.
+
+### Security model
+
+- **Security group**: zero inbound rules — no port is reachable from the internet
+- **NACL**: inbound allows only ephemeral ports (1024–65535), which are return packets for connections the instance initiated; all other inbound is implicitly denied
+- **SSM**: the instance registers with Systems Manager over outbound HTTPS — no inbound port required
+- **IMDSv2**: instance metadata service is locked to v2 (prevents SSRF)
+- **IAM**: instance role has `AmazonSSMManagedInstanceCore` (SSM access) and `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream` scoped to Anthropic foundation models only
+
+### Infrastructure layout
+
+```text
+infra/
+  bin/nanoclaw.ts        # CDK app entry point
+  lib/nanoclaw-stack.ts  # VPC, NACL, SG, IAM role, EC2 instance
+  cdk.json
+  package.json
+  tsconfig.json
+```
+
 ## FAQ
 
 **Why Docker?**

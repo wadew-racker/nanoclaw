@@ -17,7 +17,7 @@ import { request as httpRequest, RequestOptions } from 'http';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 
-export type AuthMode = 'api-key' | 'oauth' | 'bedrock';
+export type AuthMode = 'api-key' | 'oauth' | 'bedrock' | 'ec2-instance-role';
 
 export interface ProxyConfig {
   authMode: AuthMode;
@@ -120,7 +120,16 @@ export function startCredentialProxy(
 
 /** Detect which auth mode the host is configured for. */
 export function detectAuthMode(): AuthMode {
-  const secrets = readEnvFile(['ANTHROPIC_API_KEY', 'CLAUDE_CODE_USE_BEDROCK']);
+  const secrets = readEnvFile([
+    'ANTHROPIC_API_KEY',
+    'CLAUDE_CODE_USE_BEDROCK',
+    'CLAUDE_CODE_USE_EC2_ROLE',
+  ]);
+  if (
+    secrets.CLAUDE_CODE_USE_EC2_ROLE === '1' ||
+    secrets.CLAUDE_CODE_USE_EC2_ROLE === 'true'
+  )
+    return 'ec2-instance-role';
   if (
     secrets.CLAUDE_CODE_USE_BEDROCK === '1' ||
     secrets.CLAUDE_CODE_USE_BEDROCK === 'true'

@@ -4,6 +4,7 @@
  */
 import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
+import { request as httpRequest } from 'http';
 import os from 'os';
 import path from 'path';
 
@@ -225,10 +226,107 @@ function buildVolumeMounts(
   return mounts;
 }
 
-function buildContainerArgs(
+interface Ec2InstanceCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken: string;
+  /** Region from the instance identity document. */
+  region: string;
+}
+
+/** Make a GET request to the EC2 Instance Metadata Service (IMDSv2). */
+function imdsGet(path: string, token: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      {
+        hostname: '169.254.169.254',
+        path,
+        method: 'GET',
+        headers: { 'X-aws-ec2-metadata-token': token },
+        timeout: 3000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => resolve(Buffer.concat(chunks).toString().trim()));
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`IMDS request timed out: ${path}`));
+    });
+    req.end();
+  });
+}
+
+/**
+ * Fetch temporary AWS credentials and region from the EC2 instance metadata
+ * service (IMDSv2). Requires the instance to have an IAM role attached.
+ */
+async function fetchEc2InstanceCredentials(): Promise<Ec2InstanceCredentials> {
+  // IMDSv2: obtain a session token first
+  const token = await new Promise<string>((resolve, reject) => {
+    const req = httpRequest(
+      {
+        hostname: '169.254.169.254',
+        path: '/latest/api/token',
+        method: 'PUT',
+        headers: { 'X-aws-ec2-metadata-token-ttl-seconds': '21600' },
+        timeout: 3000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => resolve(Buffer.concat(chunks).toString().trim()));
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(
+        new Error(
+          'IMDS token request timed out — is CLAUDE_CODE_USE_EC2_ROLE=1 set on a non-EC2 host?',
+        ),
+      );
+    });
+    req.end();
+  });
+
+  // Resolve the attached role name
+  const roleName = await imdsGet(
+    '/latest/meta-data/iam/security-credentials/',
+    token,
+  );
+
+  // Fetch credentials and instance region in parallel
+  const [credsJson, identityJson] = await Promise.all([
+    imdsGet(
+      `/latest/meta-data/iam/security-credentials/${encodeURIComponent(roleName)}`,
+      token,
+    ),
+    imdsGet('/latest/dynamic/instance-identity/document', token),
+  ]);
+
+  const creds = JSON.parse(credsJson);
+  if (creds.Code !== 'Success') {
+    throw new Error(`IMDS credentials returned non-success Code: ${creds.Code}`);
+  }
+
+  const identity = JSON.parse(identityJson);
+
+  return {
+    accessKeyId: creds.AccessKeyId,
+    secretAccessKey: creds.SecretAccessKey,
+    sessionToken: creds.Token,
+    region: identity.region,
+  };
+}
+
+async function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
-): string[] {
+): Promise<string[]> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
   // Pass host timezone so container's local time matches the user's
@@ -236,7 +334,21 @@ function buildContainerArgs(
 
   const authMode = detectAuthMode();
 
-  if (authMode === 'bedrock') {
+  if (authMode === 'ec2-instance-role') {
+    // Running on EC2: fetch temporary credentials from the instance metadata
+    // service and inject them. The container uses them for Bedrock SigV4 signing,
+    // same as the static-key bedrock mode. Credentials auto-rotate via the role.
+    const creds = await fetchEc2InstanceCredentials();
+    const awsSecrets = readEnvFile(['ANTHROPIC_MODEL', 'AWS_REGION']);
+    args.push('-e', 'CLAUDE_CODE_USE_BEDROCK=1');
+    args.push('-e', `AWS_ACCESS_KEY_ID=${creds.accessKeyId}`);
+    args.push('-e', `AWS_SECRET_ACCESS_KEY=${creds.secretAccessKey}`);
+    args.push('-e', `AWS_SESSION_TOKEN=${creds.sessionToken}`);
+    // Prefer an explicit AWS_REGION from .env; fall back to the instance's region
+    args.push('-e', `AWS_REGION=${awsSecrets.AWS_REGION || creds.region}`);
+    if (awsSecrets.ANTHROPIC_MODEL)
+      args.push('-e', `ANTHROPIC_MODEL=${awsSecrets.ANTHROPIC_MODEL}`);
+  } else if (authMode === 'bedrock') {
     // Bedrock uses AWS SigV4 signing — bypass the credential proxy and
     // pass AWS credentials directly to the container.
     const awsSecrets = readEnvFile([
@@ -317,7 +429,7 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  const containerArgs = buildContainerArgs(mounts, containerName);
+  const containerArgs = await buildContainerArgs(mounts, containerName);
 
   logger.debug(
     {

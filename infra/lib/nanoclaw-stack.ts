@@ -118,7 +118,7 @@ export class NanoclawStack extends cdk.Stack {
     const instanceSg = new ec2.SecurityGroup(this, 'InstanceSg', {
       vpc,
       description:
-        'NanoClaw EC2 — no inbound, outbound only. Access via SSM Session Manager.',
+        'NanoClaw EC2 - no inbound, outbound only. Access via SSM Session Manager.',
       allowAllOutbound: true,
     });
 

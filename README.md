@@ -204,7 +204,7 @@ cd nanoclaw
 claude   # then run /setup
 ```
 
-The user data script installs Docker, Node.js 24, and Git automatically on first boot (takes ~2 minutes). Everything else is handled by `/setup`.
+The user data script installs Docker, Node.js 24, Git, GitHub CLI, and Claude Code automatically on first boot (takes ~2 minutes). Everything else is handled by `/setup`.
 
 ### Security model
 

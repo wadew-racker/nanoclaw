@@ -178,6 +178,21 @@ export class NanoclawStack extends cdk.Stack {
       '# Git and essentials',
       'dnf install -y git',
 
+      '# GitHub CLI',
+      'dnf install -y dnf-plugins-core',
+      'dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo',
+      'dnf install -y gh',
+
+      '# Claude Code',
+      'npm install -g @anthropic-ai/claude-code',
+
+      '# Default environment variables — sourced for all login shells (including SSM sessions)',
+      'cat > /etc/profile.d/nanoclaw.sh << \'EOF\'',
+      'export CLAUDE_CODE_USE_BEDROCK=1',
+      'export AWS_REGION=us-east-1',
+      'export ANTHROPIC_MODEL=global.anthropic.claude-sonnet-4-6',
+      'EOF',
+
       'echo "NanoClaw prerequisites ready. Connect via SSM and run /setup."',
     );
 

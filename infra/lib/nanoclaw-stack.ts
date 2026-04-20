@@ -150,9 +150,14 @@ export class NanoclawStack extends cdk.Stack {
           'bedrock:InvokeModel',
           'bedrock:InvokeModelWithResponseStream',
         ],
-        // Allows all Anthropic models in all regions. Narrow to a specific
-        // region or model ID (e.g. anthropic.claude-sonnet-4-5-*) if desired.
-        resources: ['arn:aws:bedrock:*::foundation-model/anthropic.*'],
+        // Allows all Anthropic foundation models and cross-region inference
+        // profiles (e.g. global.anthropic.claude-sonnet-4-6) in all regions.
+        // Inference profiles use a different ARN format than foundation models.
+        resources: [
+          'arn:aws:bedrock:*::foundation-model/anthropic.*',
+          'arn:aws:bedrock:*::inference-profile/*.anthropic.*',
+          'arn:aws:bedrock:*:*:inference-profile/*.anthropic.*',
+        ],
       }),
     );
 
@@ -193,6 +198,9 @@ export class NanoclawStack extends cdk.Stack {
       'export ANTHROPIC_MODEL=global.anthropic.claude-sonnet-4-6',
       'EOF',
 
+      '# Set bash as default shell for ec2-user',
+      'usermod -s /bin/bash ec2-user',
+
       'echo "NanoClaw prerequisites ready. Connect via SSM and run /setup."',
     );
 
@@ -209,7 +217,7 @@ export class NanoclawStack extends cdk.Stack {
       vpc,
       instanceType: ec2.InstanceType.of(
         ec2.InstanceClass.T4G,
-        ec2.InstanceSize.SMALL,
+        ec2.InstanceSize.MEDIUM,
       ),
       machineImage: ec2.MachineImage.latestAmazonLinux2023({
         cpuType: ec2.AmazonLinuxCpuType.ARM_64,
@@ -231,6 +239,14 @@ export class NanoclawStack extends cdk.Stack {
       // Require IMDSv2 — prevents SSRF attacks from reaching instance metadata
       requireImdsv2: true,
     });
+
+    // CPU credit mode: unlimited — burstable instances (T-series) accumulate
+    // credits when idle and consume them under load. Unlimited mode allows
+    // sustained performance beyond the baseline without being throttled, at a
+    // small additional charge if credits are depleted.
+    (instance.node.defaultChild as ec2.CfnInstance).creditSpecification = {
+      cpuCredits: 'unlimited',
+    };
 
     // -------------------------------------------------------------------------
     // Outputs

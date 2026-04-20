@@ -310,7 +310,9 @@ async function fetchEc2InstanceCredentials(): Promise<Ec2InstanceCredentials> {
 
   const creds = JSON.parse(credsJson);
   if (creds.Code !== 'Success') {
-    throw new Error(`IMDS credentials returned non-success Code: ${creds.Code}`);
+    throw new Error(
+      `IMDS credentials returned non-success Code: ${creds.Code}`,
+    );
   }
 
   const identity = JSON.parse(identityJson);

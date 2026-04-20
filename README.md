@@ -206,6 +206,15 @@ claude   # then run /setup
 
 The user data script installs Docker, Node.js 24, Git, GitHub CLI, and Claude Code automatically on first boot (takes ~2 minutes). Everything else is handled by `/setup`.
 
+### Destroy
+
+```bash
+cd infra
+npm run destroy
+```
+
+This tears down all resources created by the stack (VPC, EC2 instance, IAM role, security group, etc.). The EBS volume is deleted along with the instance — make sure you've backed up anything you need first.
+
 ### Security model
 
 - **Security group**: zero inbound rules — no port is reachable from the internet
